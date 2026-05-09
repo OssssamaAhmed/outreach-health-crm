@@ -22,6 +22,7 @@ import { Button } from "./ui/button";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 import { NotificationBell } from "./NotificationBell";
+import { DemoBanner } from "./DemoBanner";
 
 const LOGO_URL = "/logo.png";
 
@@ -200,6 +201,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <NotificationBell />
           </div>
         </header>
+
+        {/* Demo banner (renders only when VITE_DEMO_MODE=true) */}
+        <DemoBanner />
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">

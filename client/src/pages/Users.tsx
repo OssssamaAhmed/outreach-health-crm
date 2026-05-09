@@ -18,6 +18,7 @@ import { format, formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { useLocation } from "wouter";
+import { IS_DEMO_MODE } from "@/lib/demoMode";
 
 function roleBadgeClasses(role: string) {
   if (role === "super_admin") return "bg-brand-primary-hover text-white";
@@ -412,6 +413,10 @@ export default function Users() {
                           >
                             {isSelf ? (
                               <span className="text-xs text-muted-foreground italic">Cannot change own role or status</span>
+                            ) : IS_DEMO_MODE ? (
+                              <span className="text-[11px] px-2 py-0.5 rounded font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                                Demo: read-only
+                              </span>
                             ) : (
                               <div className="flex flex-col items-end gap-2">
                                 <Select
