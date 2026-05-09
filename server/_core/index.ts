@@ -6,9 +6,11 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { registerImportRoutes } from "./imports";
+import { registerDemoRoutes, seedDemoUsers } from "./demo";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { ENV } from "./env";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -38,6 +40,14 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerImportRoutes(app);
+  registerDemoRoutes(app);
+
+  // Demo mode: ensure the three seed accounts exist before the app
+  // accepts requests. Failures are swallowed so a transient DB blip
+  // doesn't crash boot.
+  if (ENV.demoMode) {
+    await seedDemoUsers();
+  }
   // tRPC API
   app.use(
     "/api/trpc",

@@ -8,6 +8,7 @@ import ExcelJS from "exceljs";
 import { parse as parseCsv } from "csv-parse/sync";
 import { getDb, logActivity, closeUserSession } from "./db";
 import { ENV } from "./_core/env";
+import { isDemoSeedUser } from "./_core/demo";
 import {
   patients, visits, medicines, inventory,
   medicalCamps, campDoctors, campTests, campPatients, users,
@@ -2594,6 +2595,14 @@ export const appRouter = router({
         role: z.enum(["user", "admin", "receptionist", "super_admin"]),
       }))
       .mutation(async ({ input, ctx }) => {
+        // Demo mode: role mutations are off, full stop. The role-switcher
+        // buttons are the only way to assume a role on the demo deployment.
+        if (ENV.demoMode) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Role changes are disabled in demo mode.",
+          });
+        }
         if (input.userId === ctx.user.id) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Cannot change your own role" });
         }
@@ -2642,6 +2651,15 @@ export const appRouter = router({
           throw new TRPCError({
             code: "FORBIDDEN",
             message: "Cannot deactivate the foundation owner account.",
+          });
+        }
+        // Demo mode: the three seed accounts (super-admin, admin,
+        // receptionist) cannot be deactivated. Other users created during
+        // a demo session can be — they're cleared by the daily reset anyway.
+        if (ENV.demoMode && isDemoSeedUser(target.openId)) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Demo seed accounts cannot be deactivated.",
           });
         }
         await db.update(users).set({ isActive: input.isActive }).where(eq(users.id, input.userId));
