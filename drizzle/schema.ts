@@ -285,3 +285,24 @@ export const notifications = mysqlTable("notifications", {
 
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
+
+// Demo reset log — written once per nightly reset run when DEMO_MODE=true.
+// Append-only audit table; the reset cron itself never truncates it. The
+// row counts let the /__demo/health page surface "is the demo healthy?"
+// without a DB connection from the operator.
+export const demoResetLog = mysqlTable("demo_reset_log", {
+  id: int("id").autoincrement().primaryKey(),
+  ranAt: timestamp("ranAt").defaultNow().notNull(),
+  durationMs: int("durationMs").notNull(),
+  patientsInserted: int("patientsInserted").notNull(),
+  visitsInserted: int("visitsInserted").notNull(),
+  inventoryInserted: int("inventoryInserted").notNull(),
+  medicinesInserted: int("medicinesInserted").notNull(),
+  campsInserted: int("campsInserted").notNull(),
+  campPatientsInserted: int("campPatientsInserted").notNull(),
+  success: boolean("success").notNull(),
+  errorMessage: text("errorMessage"),
+});
+
+export type DemoResetLog = typeof demoResetLog.$inferSelect;
+export type InsertDemoResetLog = typeof demoResetLog.$inferInsert;
