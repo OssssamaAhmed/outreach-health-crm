@@ -93,6 +93,10 @@ export function registerDemoRoutes(app: Express) {
   if (!ENV.demoMode) return;
 
   app.get("/__demo/login", async (req: Request, res: Response) => {
+    // Prevent search engines from indexing demo login URLs. Set before any
+    // branch so 400 / 500 / 302 responses all carry the header.
+    res.setHeader("X-Robots-Tag", "noindex, nofollow");
+
     const roleParam = typeof req.query.role === "string" ? req.query.role : "";
     const target = DEMO_USERS.find((u) => u.role === roleParam);
     if (!target) {
