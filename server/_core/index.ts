@@ -40,12 +40,13 @@ async function startServer() {
   registerStorageProxy(app);
   registerOAuthRoutes(app);
   registerImportRoutes(app);
-  registerDemoRoutes(app);
 
-  // Demo mode: ensure the three seed accounts exist before the app
-  // accepts requests. Failures are swallowed so a transient DB blip
-  // doesn't crash boot.
+  // Demo mode: register the role-switcher endpoint and seed the three
+  // demo accounts. Both gates here are belt-and-braces — the helpers
+  // also short-circuit internally on !ENV.demoMode, but the call-site
+  // gate makes the production behaviour obvious from index.ts alone.
   if (ENV.demoMode) {
+    registerDemoRoutes(app);
     await seedDemoUsers();
   }
   // tRPC API
