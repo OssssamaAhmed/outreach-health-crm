@@ -108,7 +108,3 @@ temp/
 
 # Local Claude Code state
 .claude/
-
-# Local-only scripts (allow named tracked scripts)
-scripts/*
-!scripts/wipe-and-reseed-patients.ts

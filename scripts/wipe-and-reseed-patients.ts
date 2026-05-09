@@ -52,7 +52,7 @@ async function main() {
   console.log("     - camp_patients");
   console.log("     - patients");
   console.log("");
-  console.log("  Then re-run the patient/visit seed from server/data/patients.csv.");
+  console.log("  Then re-run server/seed.ts to repopulate via the synthetic generator.");
   console.log("  inventory, medicines, medical_camps, camp_doctors, camp_tests,");
   console.log("  users, user_sessions, activity_logs, pending_invites are NOT touched.");
   console.log("");

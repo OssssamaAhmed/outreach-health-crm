@@ -1,10 +1,12 @@
 /**
  * Seed script — populates the database with the medicine reference list,
- * inventory items, and patient/visit records.
+ * a synthetic patient/visit set, synthetic inventory, and one medical
+ * camp with synthetic camp-patient records.
  *
- * The patient, visit, inventory, and camp-patient arrays in this file are
- * intentionally empty. The synthetic-data generator (next commit) will
- * populate them with locale-aware fake data via @faker-js/faker.
+ * Patient, inventory, and camp data are produced by the deterministic
+ * generators under scripts/seed/, seeded with a fixed value so the same
+ * dataset reappears on every run. The data is locale-flavored
+ * (Pakistani names + Karachi areas) but contains no real records.
  *
  * Run: pnpm seed
  */
@@ -19,30 +21,16 @@ import {
   campTests,
   campPatients,
 } from "../drizzle/schema";
+import { generatePatientVisitRows } from "../scripts/seed/patients";
+import { generateInventoryItems } from "../scripts/seed/inventory";
+import { generateCampPatients } from "../scripts/seed/camp";
 
 const DATABASE_URL = process.env.DATABASE_URL!;
 const db = drizzle(DATABASE_URL);
 
-// ─── 1. Patient Visits (synthetic generator fills this in next commit) ───────
+// ─── 1. Patient Visits (synthetic) ───────────────────────────────────────────
 
-const patientVisitRows: Array<{
-  date: string;
-  name: string;
-  fatherName: string;
-  age: number;
-  gender: "Male" | "Female" | "Other";
-  phone: string;
-  area: string;
-  complaint: string;
-  diagnosis: string;
-  medicineGiven: string;
-  bottleSize: string;
-  dosage: string;
-  patientId: string;
-  visitNumber: number;
-  medicineEndDate: string;
-  eligibility: string;
-}> = [];
+const patientVisitRows = generatePatientVisitRows();
 
 // ─── 2. Medicine Reference List ──────────────────────────────────────────────
 // Clinical reference, no PHI. Kept verbatim from the original build.
@@ -79,27 +67,13 @@ const medicineData = [
   { name: "Inj. Normal Saline", category: "Nebulization", form: "Injection" as const, unit: "Ampoule (25ml)", defaultDosage: "Single dose", durationDays: 1, notes: "For nebulizer" },
 ];
 
-// ─── 3. Inventory (synthetic generator fills this in next commit) ────────────
+// ─── 3. Inventory (synthetic) ────────────────────────────────────────────────
 
-const inventoryData: Array<{
-  name: string;
-  category: string;
-  costCentre: string;
-  quantity: number;
-  unit: string;
-}> = [];
+const inventoryData = generateInventoryItems();
 
-// ─── 4. Medical Camp — "Sector G-9 Community Camp" ───────────────────────────
-// campPatientData filled by synthetic generator in next commit.
+// ─── 4. Medical Camp — "Sector G-9 Community Camp" (synthetic patients) ──────
 
-const campPatientData: Array<{
-  serialNo: number;
-  patientName: string;
-  age: string;
-  phone: string;
-  fatherHusbandName: string;
-  area: string;
-}> = [];
+const campPatientData = generateCampPatients();
 
 // ─── Main Seed Function ──────────────────────────────────────────────────────
 
@@ -119,13 +93,11 @@ async function seed() {
   // ── Inventory ──
   console.log("  → Seeding inventory...");
   const existingInv = await db.select({ id: inventory.id }).from(inventory).limit(1);
-  if (existingInv.length === 0 && inventoryData.length > 0) {
+  if (existingInv.length === 0) {
     await db.insert(inventory).values(
       inventoryData.map((i) => ({ ...i, lowStockThreshold: 2 })),
     );
     console.log(`     ✓ ${inventoryData.length} inventory items inserted`);
-  } else if (inventoryData.length === 0) {
-    console.log("     ⏭  Inventory data is empty (synthetic generator not yet wired), skipping");
   } else {
     console.log("     ⏭  Inventory already seeded, skipping");
   }
@@ -133,7 +105,7 @@ async function seed() {
   // ── Patients & Visits ──
   console.log("  → Seeding patients and visits...");
   const existingPats = await db.select({ id: patients.id }).from(patients).limit(1);
-  if (existingPats.length === 0 && patientVisitRows.length > 0) {
+  if (existingPats.length === 0) {
     // Build unique-patient map (one row per patientId; later rows merge missing fields)
     const patientMap = new Map<string, (typeof patientVisitRows)[number]>();
     for (const row of patientVisitRows) {
@@ -217,8 +189,6 @@ async function seed() {
         (visitFailures.length ? ` (${visitFailures.length} failed)` : "") +
         (visitOrphan ? ` (${visitOrphan} skipped — parent patient missing)` : ""),
     );
-  } else if (patientVisitRows.length === 0) {
-    console.log("     ⏭  Patient data is empty (synthetic generator not yet wired), skipping");
   } else {
     console.log("     ⏭  Patients already seeded, skipping");
   }
