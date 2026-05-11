@@ -8,7 +8,11 @@
  * dataset reappears on every run. The data is locale-flavored
  * (Pakistani names + Karachi areas) but contains no real records.
  *
- * Run: pnpm seed
+ * Two entry points:
+ *   pnpm seed                  → runs the standalone seed (this file's bottom).
+ *   seedDatabase(handle)       → reusable function, called from the demo
+ *                                reset cron with a transaction handle so
+ *                                deletes + reseed run atomically.
  */
 import { drizzle } from "drizzle-orm/mysql2";
 import {
@@ -25,8 +29,14 @@ import { generatePatientVisitRows } from "../scripts/seed/patients";
 import { generateInventoryItems } from "../scripts/seed/inventory";
 import { generateCampPatients } from "../scripts/seed/camp";
 
-const DATABASE_URL = process.env.DATABASE_URL!;
-const db = drizzle(DATABASE_URL);
+export type SeedCounts = {
+  medicinesInserted: number;
+  inventoryInserted: number;
+  patientsInserted: number;
+  visitsInserted: number;
+  campsInserted: number;
+  campPatientsInserted: number;
+};
 
 // ─── 1. Patient Visits (synthetic) ───────────────────────────────────────────
 
@@ -77,14 +87,38 @@ const campPatientData = generateCampPatients();
 
 // ─── Main Seed Function ──────────────────────────────────────────────────────
 
-async function seed() {
-  console.log("🌱 Starting seed...");
+/**
+ * Inserts the full reference + synthetic dataset using the given handle.
+ *
+ * The handle parameter is typed `any` because drizzle's MySql2Database and
+ * MySqlTransaction are structurally compatible for our usage (insert/
+ * select/returningId) but the official types are nominally different.
+ * Using `any` here is the pragmatic choice that lets callers pass either
+ * the module-level db OR a `db.transaction(async (tx) => ...)` handle.
+ *
+ * Returns counts so callers (the demo reset cron) can log them.
+ *
+ * Per-table "is this empty?" guards stay in place — running this against
+ * an already-seeded database is a no-op (the daily reset wipes first, so
+ * the guards always pass through to inserts in that path).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function seedDatabase(handle: any): Promise<SeedCounts> {
+  const counts: SeedCounts = {
+    medicinesInserted: 0,
+    inventoryInserted: 0,
+    patientsInserted: 0,
+    visitsInserted: 0,
+    campsInserted: 0,
+    campPatientsInserted: 0,
+  };
 
   // ── Medicines ──
   console.log("  → Seeding medicines...");
-  const existingMeds = await db.select({ id: medicines.id }).from(medicines).limit(1);
+  const existingMeds = await handle.select({ id: medicines.id }).from(medicines).limit(1);
   if (existingMeds.length === 0) {
-    await db.insert(medicines).values(medicineData);
+    await handle.insert(medicines).values(medicineData);
+    counts.medicinesInserted = medicineData.length;
     console.log(`     ✓ ${medicineData.length} medicines inserted`);
   } else {
     console.log("     ⏭  Medicines already seeded, skipping");
@@ -92,11 +126,12 @@ async function seed() {
 
   // ── Inventory ──
   console.log("  → Seeding inventory...");
-  const existingInv = await db.select({ id: inventory.id }).from(inventory).limit(1);
+  const existingInv = await handle.select({ id: inventory.id }).from(inventory).limit(1);
   if (existingInv.length === 0) {
-    await db.insert(inventory).values(
+    await handle.insert(inventory).values(
       inventoryData.map((i) => ({ ...i, lowStockThreshold: 2 })),
     );
+    counts.inventoryInserted = inventoryData.length;
     console.log(`     ✓ ${inventoryData.length} inventory items inserted`);
   } else {
     console.log("     ⏭  Inventory already seeded, skipping");
@@ -104,7 +139,7 @@ async function seed() {
 
   // ── Patients & Visits ──
   console.log("  → Seeding patients and visits...");
-  const existingPats = await db.select({ id: patients.id }).from(patients).limit(1);
+  const existingPats = await handle.select({ id: patients.id }).from(patients).limit(1);
   if (existingPats.length === 0) {
     // Build unique-patient map (one row per patientId; later rows merge missing fields)
     const patientMap = new Map<string, (typeof patientVisitRows)[number]>();
@@ -129,7 +164,7 @@ async function seed() {
     for (const [patientId, row] of Array.from(patientMap.entries())) {
       position++;
       try {
-        const [inserted] = await db.insert(patients).values({
+        const [inserted] = await handle.insert(patients).values({
           patientId,
           name: row.name,
           fatherName: row.fatherName || null,
@@ -146,6 +181,7 @@ async function seed() {
         console.error(`     ✗ patient #${position} ${patientId} "${row.name}" failed:`, e);
       }
     }
+    counts.patientsInserted = patientOk;
     console.log(
       `     ✓ ${patientOk}/${patientMap.size} patients inserted` +
         (patientFailures.length ? ` (${patientFailures.length} failed — see log above)` : ""),
@@ -165,7 +201,7 @@ async function seed() {
       const medicineEndDate = row.medicineEndDate ? new Date(row.medicineEndDate) : undefined;
       const bottleSizeRaw = parseInt(row.bottleSize);
       try {
-        await db.insert(visits).values({
+        await handle.insert(visits).values({
           patientId: dbId,
           visitNumber: row.visitNumber,
           visitDate,
@@ -184,6 +220,7 @@ async function seed() {
         console.error(`     ✗ visit (row ${i}, ${row.patientId} #${row.visitNumber}) failed:`, e);
       }
     }
+    counts.visitsInserted = visitOk;
     console.log(
       `     ✓ ${visitOk}/${patientVisitRows.length} visits inserted` +
         (visitFailures.length ? ` (${visitFailures.length} failed)` : "") +
@@ -195,9 +232,9 @@ async function seed() {
 
   // ── Medical Camp ──
   console.log("  → Seeding medical camp...");
-  const existingCamps = await db.select({ id: medicalCamps.id }).from(medicalCamps).limit(1);
+  const existingCamps = await handle.select({ id: medicalCamps.id }).from(medicalCamps).limit(1);
   if (existingCamps.length === 0) {
-    const [camp] = await db
+    const [camp] = await handle
       .insert(medicalCamps)
       .values({
         title: "Sector G-9 Community Camp",
@@ -212,19 +249,21 @@ async function seed() {
       .$returningId();
 
     const campId = camp.id;
+    counts.campsInserted = 1;
 
-    await db.insert(campDoctors).values([
+    await handle.insert(campDoctors).values([
       { campId, doctorName: "Dr. General Physician", specialty: "General Medicine" },
     ]);
 
-    await db.insert(campTests).values([
+    await handle.insert(campTests).values([
       { campId, testName: "General OPD Consultation" },
       { campId, testName: "Blood Pressure Check" },
       { campId, testName: "Blood Sugar Test" },
     ]);
 
     if (campPatientData.length > 0) {
-      await db.insert(campPatients).values(campPatientData.map((p) => ({ campId, ...p })));
+      await handle.insert(campPatients).values(campPatientData.map((p) => ({ campId, ...p })));
+      counts.campPatientsInserted = campPatientData.length;
     }
 
     console.log(`     ✓ Medical camp created with ${campPatientData.length} patients`);
@@ -232,11 +271,31 @@ async function seed() {
     console.log("     ⏭  Medical camps already seeded, skipping");
   }
 
-  console.log("✅ Seed complete!");
-  process.exit(0);
+  return counts;
 }
 
-seed().catch((err) => {
-  console.error("❌ Seed failed:", err);
-  process.exit(1);
-});
+// ─── Standalone runner ───────────────────────────────────────────────────────
+// Only runs when seed.ts is executed directly (pnpm seed), NOT when this
+// module is imported by demoReset.ts.
+
+const isDirectRun =
+  process.argv[1] && process.argv[1].replace(/\\/g, "/").endsWith("/server/seed.ts");
+
+if (isDirectRun) {
+  const DATABASE_URL = process.env.DATABASE_URL;
+  if (!DATABASE_URL) {
+    console.error("❌ DATABASE_URL is not set");
+    process.exit(1);
+  }
+  const db = drizzle(DATABASE_URL);
+  console.log("🌱 Starting seed...");
+  seedDatabase(db)
+    .then(() => {
+      console.log("✅ Seed complete!");
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error("❌ Seed failed:", err);
+      process.exit(1);
+    });
+}

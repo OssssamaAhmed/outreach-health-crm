@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { registerImportRoutes } from "./imports";
 import { registerDemoRoutes, seedDemoUsers } from "./demo";
+import { registerDemoCron, registerDemoResetEndpoints } from "./demoReset";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
@@ -41,12 +42,14 @@ async function startServer() {
   registerOAuthRoutes(app);
   registerImportRoutes(app);
 
-  // Demo mode: register the role-switcher endpoint and seed the three
-  // demo accounts. Both gates here are belt-and-braces — the helpers
+  // Demo mode: register the role-switcher endpoint, seed the three
+  // demo accounts, register the reset endpoints + cron. All four helpers
   // also short-circuit internally on !ENV.demoMode, but the call-site
   // gate makes the production behaviour obvious from index.ts alone.
   if (ENV.demoMode) {
     registerDemoRoutes(app);
+    registerDemoResetEndpoints(app);
+    registerDemoCron();
     await seedDemoUsers();
   }
   // tRPC API

@@ -19,4 +19,8 @@ export const ENV = {
   //   - Daily reset cron wipes non-user tables at 03:00 UTC (commit 7)
   // Use ONLY on a separate demo deployment with a separate database.
   demoMode: process.env.DEMO_MODE === "true",
+  // Shared secret guarding the manual demo-reset endpoint
+  // (POST /__demo/reset). Empty string disables the endpoint entirely
+  // when demoMode is on; the nightly cron still runs.
+  demoResetSecret: process.env.DEMO_RESET_SECRET ?? "",
 };
